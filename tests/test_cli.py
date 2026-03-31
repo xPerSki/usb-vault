@@ -4,6 +4,7 @@ import os
 from unittest.mock import patch
 
 from click.testing import CliRunner
+
 from usb_vault.cli import cli
 from usb_vault.exceptions import NoUSBDeviceError
 
