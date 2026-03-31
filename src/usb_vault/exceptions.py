@@ -1,9 +1,9 @@
 class USBVaultError(Exception):
-    """Raised when there is any error within the vault."""
+    """Base exception for all application-specific errors."""
 
 
 class NoUSBDeviceError(USBVaultError):
-    """Raised when no USB storage device is detected."""
+    """Raised when no suitable USB storage device is detected."""
 
 
 class EncryptionError(USBVaultError):
