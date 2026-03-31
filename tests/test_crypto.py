@@ -7,6 +7,7 @@ via AAD, and the security of the file structure.
 from pathlib import Path
 
 import pytest
+
 from usb_vault.crypto import decrypt_file, encrypt_file
 from usb_vault.exceptions import DecryptionError
 
