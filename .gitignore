@@ -5,6 +5,7 @@ ENV/
 *.egg-info/
 dist/
 build/
+pro/
 eggs/
 .eggs/
 

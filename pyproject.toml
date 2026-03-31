@@ -26,7 +26,7 @@ dev = [
 ]
 
 [project.scripts]
-usb-vault = "usb_vault.cli:app"
+usb-vault = "usb_vault.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -35,19 +35,17 @@ where = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py311"
 line-length = 88
 
 [tool.ruff.lint]
-select = ["E", "F", "D", "I", "S", "ANN", "UP"]
-
-ignore = ["D100"]
+select = ["E", "W", "F", "D", "I", "S", "N", "ANN"]
+ignore = ["D100", "S101", "S105"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D", "ANN"]
+"tests/*" = ["D", "ANN", "S101", "S105"]
 
 [tool.ruff.format]
 quote-style = "double"
