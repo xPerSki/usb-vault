@@ -4,6 +4,8 @@ ENV/
 
 *.egg-info/
 dist/
+*.build/
+*.dist/
 build/
 pro/
 eggs/
@@ -20,3 +22,6 @@ __pycache__/
 *.swp
 TODO
 *.vault
+*.pfx
+*.p12
+*.bat

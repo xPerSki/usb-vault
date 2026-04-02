@@ -22,7 +22,14 @@ Without the selected USB drive, your files remain encrypted and computationally 
 
 ### How to Use It
 
-*(This assumes you have downloaded the `usb-vault.exe` application from the project's releases page.)*
+You can use the application either by downloading the `usb-vault.exe` standalone executable from the project's releases page, or by installing the Python package directly.
+
+**To install the package via Python (CLI access):**
+```sh
+# From a local clone of the repository
+pip install .
+```
+This installs the dependencies and makes the `usb-vault` command globally available in your terminal.
 
 #### To Encrypt a File:
 
