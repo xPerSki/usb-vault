@@ -1,4 +1,23 @@
-# usb-vault: Hardware-Bound File Encryption
+<p align="center">
+  <img src="src/usb_vault/icons/icon.png" width="150" height="150" alt="USB-Vault Logo">
+</p>
+<h1 align="center">USB-Vault</h1>
+<p align="center">
+  <strong>Hardware-Bound File Encryption</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.python.org/downloads/release/python-3110/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python Version"></a>
+  <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
+  <a href="https://github.com/pre-commit/pre-commit"><img src="https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit" alt="pre-commit"></a>
+  <a href="https://www.microsoft.com/windows/"><img src="https://img.shields.io/badge/OS-Windows-blue?logo=windows&logoColor=white" alt="OS - Windows"></a>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/Encryption-AES--256--GCM-red.svg" alt="AES-256-GCM">
+  <img src="https://img.shields.io/badge/KDF-Argon2id-orange.svg" alt="Argon2id">
+  <img src="https://img.shields.io/badge/Fingerprint-SHA--256-yellow.svg" alt="SHA-256">
+</p>
 
 **Protect your files with a hardware-bound key and an optional password factor. `usb-vault` encrypts sensitive documents, photos, and data so access requires your selected USB device, with optional extra user secret.**
 

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A hardware-key encrypted file vault using USB device fingerprinting"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "GPL-3.0-or-later" }
 
 dependencies = [
     "cryptography>=42.0",      # AES-GCM, HKDF
