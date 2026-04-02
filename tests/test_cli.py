@@ -4,9 +4,8 @@ import os
 from unittest.mock import patch
 
 from click.testing import CliRunner
-
 from usb_vault.cli import cli
-from usb_vault.exceptions import NoUSBDeviceError
+from usb_vault.exceptions import NoUSBDeviceError, USBVaultError
 
 # Define a fake USB device that our mock function will return.
 # This makes the tests independent of any real hardware.
@@ -71,10 +70,11 @@ def test_cli_no_usb_devices(mock_list_usb):
         with open("in.txt", "wb") as f:
             f.write(b"dummy")
 
-        result = runner.invoke(cli, ["encrypt", "in.txt", "out.vault"])
+        result = runner.invoke(cli, ["encrypt", "in.txt", "out.vault"], input="q\n")
 
-    assert result.exit_code != 0, "Exit code should be non-zero for this error."
+    assert result.exit_code == 0, "Exit code should be zero for an intentional quit."
     assert "No USB devices detected" in result.output
+    assert "Exiting..." in result.output
 
 
 @patch("usb_vault.cli.list_usb_storage_devices")
@@ -113,7 +113,7 @@ def test_cli_encrypt_no_output_path_cancel(mock_list_usb):
         )
 
         assert result.exit_code == 0
-        assert "Operation cancelled" in result.output
+        assert "Operation cancelled." in result.output
         assert not os.path.exists("data.txt.vault")
 
 
@@ -164,3 +164,119 @@ def test_cli_decrypt_no_output_path_invalid_extension(mock_list_usb):
 
         assert result.exit_code == 1
         assert "Cannot determine default output name" in result.output
+
+
+@patch("usb_vault.cli._select_usb_device", return_value="faked-fingerprint-hash")
+@patch(
+    "usb_vault.cli.encrypt_file", side_effect=USBVaultError("forced encryption failure")
+)
+def test_cli_encrypt_handles_vault_error_gracefully(_mock_encrypt, _mock_select_usb):
+    """Forces a domain error and verifies the CLI exits safely without traceback."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with open("in.txt", "wb") as f:
+            f.write(b"sensitive")
+
+        result = runner.invoke(cli, ["encrypt", "in.txt", "out.vault"])
+
+    assert result.exit_code == 1
+    assert "Encryption failed: forced encryption failure" in result.output
+    assert "Traceback" not in result.output
+
+
+@patch("usb_vault.cli._select_usb_device", return_value="faked-fingerprint-hash")
+@patch(
+    "usb_vault.cli.decrypt_file", side_effect=USBVaultError("forced decryption failure")
+)
+def test_cli_decrypt_handles_vault_error_gracefully(_mock_decrypt, _mock_select_usb):
+    """Forces a domain error and verifies the CLI exits safely without traceback."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with open("in.vault", "wb") as f:
+            f.write(b"not-real")
+
+        result = runner.invoke(cli, ["decrypt", "in.vault", "out.txt"])
+
+    assert result.exit_code == 1
+    assert "Decryption failed: forced decryption failure" in result.output
+    assert "Traceback" not in result.output
+
+
+@patch("usb_vault.cli._select_usb_device", return_value="faked-fingerprint-hash")
+@patch("usb_vault.cli.encrypt_file", side_effect=RuntimeError("secret internal detail"))
+def test_cli_encrypt_handles_unexpected_error_without_leaking_details(
+    _mock_encrypt,
+    _mock_select_usb,
+):
+    """Ensures unexpected exceptions are caught and only the exception type is shown."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with open("in.txt", "wb") as f:
+            f.write(b"sensitive")
+
+        result = runner.invoke(cli, ["encrypt", "in.txt", "out.vault"])
+
+    assert result.exit_code == 1
+    assert "An unexpected error occurred: RuntimeError" in result.output
+    assert "secret internal detail" not in result.output
+    assert "Traceback" not in result.output
+
+
+@patch("usb_vault.cli.list_usb_storage_devices")
+def test_cli_roundtrip_with_optional_password(mock_list_usb):
+    """Ensures CLI supports optional password pass-through for both commands."""
+    mock_list_usb.return_value = [FAKE_USB_DEVICE]
+
+    runner = CliRunner()
+    original_content = b"CLI password roundtrip"
+    with runner.isolated_filesystem():
+        with open("test.txt", "wb") as f:
+            f.write(original_content)
+
+        encrypt_result = runner.invoke(
+            cli,
+            ["encrypt", "test.txt", "test.vault", "--password"],
+            input="1\nmy-pass\nmy-pass\n",
+        )
+
+        assert encrypt_result.exit_code == 0, encrypt_result.output
+
+        decrypt_result = runner.invoke(
+            cli,
+            ["decrypt", "test.vault", "out.txt", "--password"],
+            input="1\nmy-pass\n",
+        )
+
+        assert decrypt_result.exit_code == 0, decrypt_result.output
+        with open("out.txt", "rb") as f:
+            assert f.read() == original_content
+
+
+@patch("usb_vault.cli.list_usb_storage_devices")
+def test_cli_decrypt_with_wrong_optional_password_fails_gracefully(mock_list_usb):
+    """Decrypt should fail cleanly when an incorrect optional password is provided."""
+    mock_list_usb.return_value = [FAKE_USB_DEVICE]
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with open("secret.txt", "wb") as f:
+            f.write(b"payload")
+
+        encrypt_result = runner.invoke(
+            cli,
+            ["encrypt", "secret.txt", "secret.vault", "--password"],
+            input="1\nright-pass\nright-pass\n",
+        )
+        assert encrypt_result.exit_code == 0, encrypt_result.output
+
+        decrypt_result = runner.invoke(
+            cli,
+            ["decrypt", "secret.vault", "out.txt", "--password"],
+            input="1\nwrong-pass\n",
+        )
+
+        assert decrypt_result.exit_code == 1
+        assert "Decryption failed:" in decrypt_result.output
+        assert "Authentication failed" in decrypt_result.output
+        assert "Traceback" not in decrypt_result.output
+        assert not os.path.exists("secret.out")

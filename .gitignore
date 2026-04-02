@@ -18,3 +18,5 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+TODO
+*.vault

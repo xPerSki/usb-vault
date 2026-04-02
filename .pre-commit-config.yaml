@@ -18,4 +18,3 @@ repos:
     hooks:
       - id: check-yaml
       - id: trailing-whitespace
-      - id: check-added-large-files

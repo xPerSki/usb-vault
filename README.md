@@ -1,6 +1,6 @@
 # usb-vault: Hardware-Bound File Encryption
 
-**Secure your files with a key you can hold in your hand. `usb-vault` locks your sensitive documents, photos, and data, requiring only your specific USB stick to unlock them.**
+**Protect your files with a hardware-bound key and an optional password factor. `usb-vault` encrypts sensitive documents, photos, and data so access requires your selected USB device, with optional extra user secret.**
 
 ---
 
@@ -12,13 +12,13 @@ Think of it like a physical safe for your digital files. `usb-vault` requires a 
 
 1.  **A Physical Key**: Your specific USB flash drive.
 
-Without this exact USB drive, your files remain securely encrypted and unreadable.
+Without the selected USB drive, your files remain encrypted and computationally infeasible without the physical device. For stronger protection, use the optional password factor.
 
 ### Why Should I Use It?
 
-*   **True Offline Security**: Your files are encrypted on your computer and stay on your computer. No cloud uploads, no accounts, no data collection. Your privacy is absolute.
+*   **Offline-First Security**: Your files are encrypted locally on your computer. No cloud uploads, no accounts, and no telemetry are required by the core tool.
 *   **Hardware-Bound Protection**: If someone steals your laptop, they still can't access your vaulted files without your specific USB drive. This adds a powerful layer of physical security.
-*   **Simple & Transparent**: The program is designed to be straightforward. Because the code is open-source, its security can be independently verified by experts around the world.
+*   **Simple & Transparent**: The program is designed to be straightforward. Because the code is open-source, its security properties can be independently reviewed.
 
 ### How to Use It
 
@@ -32,6 +32,11 @@ Without this exact USB drive, your files remain securely encrypted and unreadabl
     ```sh
     usb-vault encrypt "C:\Users\YourName\Documents\my_secret_plan.txt"
     ```
+    Optional second factor:
+    ```sh
+    usb-vault encrypt "C:\Users\YourName\Documents\my_secret_plan.txt" --password
+    ```
+    (The program will securely prompt you for the password.)
 4.  The program will ask you to select your USB drive from a list.
 5.  A new, encrypted file will be created: `my_secret_plan.txt.vault`. You can now safely delete the original.
 
@@ -43,6 +48,11 @@ Without this exact USB drive, your files remain securely encrypted and unreadabl
     ```sh
     usb-vault decrypt "C:\Users\YourName\Documents\my_secret_plan.txt.vault"
     ```
+    If you used an optional password during encryption:
+    ```sh
+    usb-vault decrypt "C:\Users\YourName\Documents\my_secret_plan.txt.vault" --password
+    ```
+    (The program will securely prompt you for the password.)
 4.  The program will ask you to select the USB drive from a list.
 5.  Your original file, `my_secret_plan.txt`, will be restored.
 
@@ -56,7 +66,28 @@ Without this exact USB drive, your files remain securely encrypted and unreadabl
 
 *   **Key Derivation**: We use `Argon2id`, the winner of the Password Hashing Competition, to derive the encryption key directly from the unique hardware fingerprint of your chosen USB device.
 *   **Encryption**: All files are encrypted using `AES-256` in `GCM` mode, which provides both confidentiality and integrity (protection against tampering).
-*   **Hardware Fingerprint**: The unique `PNPDeviceID` of the USB Mass Storage device is used as the sole input for key derivation, physically binding the encryption to that specific device.
+*   **Hardware Fingerprint + Optional Password**: The `PNPDeviceID` of the USB Mass Storage device is used as a hardware factor. You can additionally provide a password for stronger resistance against spoofing and offline guessing.
+*   **Chunked Processing**: Encryption and decryption process files in chunks to improve stability on larger files.
+
+### Architecture
+
+The application is structured into clearly separated modules to ensure maintainability and security:
+
+*   **`cli.py`**: The command-line interface entry point, handling user inputs, prompts, and progress bars.
+*   **`gui.py`**: The graphical user interface, built with `customtkinter`, providing an intuitive visual experience.
+*   **`crypto.py`**: The core cryptography engine. Handles AES-256-GCM chunked streaming, file I/O, and header verification.
+*   **`key_derivation.py`**: Manages the Argon2id key derivation, securely combining the hardware fingerprint, optional password, and random salt.
+*   **`usb_detector.py`**: Interfaces with Windows WMI to detect connected USB mass storage devices and extract stable hardware identifiers.
+
+### Known Limitations
+
+*   **Windows-Only**: Currently relies on Windows Management Instrumentation (WMI) infrastructure for USB detection.
+*   **Hardware Spoofing**: USB serial numbers and hardware strings can theoretically be read and cloned at the hardware firmware level by a sophisticated attacker. Using the optional password neutralizes this threat.
+*   **In-Memory Keys**: The derived symmetric encryption key exists temporarily in RAM during active file processing.
+
+### Security Notes
+
+`usb-vault` is built with care and practical security defaults, but no software can guarantee perfect safety in every environment. Use updated systems, protect physical devices, and prefer USB + password mode for sensitive data.
 
 ### Project Setup
 

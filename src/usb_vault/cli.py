@@ -5,14 +5,40 @@ offering commands to encrypt and decrypt files using a hardware-bound key
 derived from a connected USB device.
 """
 
-import sys
 from pathlib import Path
 
 import click
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 from .crypto import decrypt_file, encrypt_file
 from .exceptions import NoUSBDeviceError, USBVaultError
-from .usb_detector import list_usb_storage_devices
+from .usb_detector import get_device_fingerprint, list_usb_storage_devices
+
+
+def _is_file_readable(filepath: Path) -> bool:
+    """Verify if the system permits read access to the target file."""
+    try:
+        with filepath.open("rb"):
+            return True
+    except OSError:
+        return False
+
+
+def _is_file_writable(filepath: Path) -> bool:
+    """Verify if the system permits write/append access to the target file."""
+    if not filepath.exists():
+        return True
+    try:
+        with filepath.open("ab"):
+            return True
+    except OSError:
+        return False
 
 
 def _select_usb_device() -> str:
@@ -25,7 +51,7 @@ def _select_usb_device() -> str:
         str: The PNPDeviceID of the selected USB device, to be used as a fingerprint.
 
     Raises:
-        NoUSBDeviceError: If the user exits the selection without picking a device.
+        click.exceptions.Exit: If the user exits the selection without picking a device.
     """
     while True:
         try:
@@ -48,7 +74,7 @@ def _select_usb_device() -> str:
 
             if choice.lower() == "q":
                 click.echo("Exiting...")
-                sys.exit(0)
+                raise click.exceptions.Exit(0)
 
             if choice == "" or choice == "0":
                 click.echo("Refreshing...")
@@ -58,14 +84,20 @@ def _select_usb_device() -> str:
                 choice_index = int(choice) - 1
                 if 0 <= choice_index < len(devices):
                     selected_device = devices[choice_index]
-                    fingerprint = selected_device["PNPDeviceID"]
+                    fingerprint = get_device_fingerprint(selected_device)
+                    if not fingerprint:
+                        click.secho(
+                            "Error: Selected device has no hardware identifiers.",
+                            fg="red",
+                        )
+                        continue
 
                     click.secho(
                         f"Selected "
                         f"'{selected_device.get('FriendlyName', 'USB Device')}'.",
                         fg="green",
                     )
-                    return fingerprint
+                    return str(fingerprint)
                 else:
                     click.secho("Invalid selection. Please try again.", fg="yellow")
             except ValueError:
@@ -74,10 +106,13 @@ def _select_usb_device() -> str:
         except NoUSBDeviceError:
             click.secho(
                 "No USB devices detected. "
-                "Please connect a device and press Enter to refresh.",
+                "Please connect a device and press Enter to refresh, or 'q' to quit.",
                 fg="yellow",
             )
-            click.prompt("", default="", show_default=False)
+            result = click.prompt("Your choice", default="", show_default=False)
+            if result.lower() == "q":
+                click.echo("Exiting...")
+                raise click.exceptions.Exit(0)
 
 
 @click.group()
@@ -95,10 +130,27 @@ def cli() -> None:
     type=click.Path(dir_okay=False, resolve_path=True),
     required=False,
 )
-def encrypt(input_file: str, output_file: str | None = None) -> None:
+@click.option(
+    "--password",
+    is_flag=True,
+    help="Prompt for an optional user password safely.",
+)
+def encrypt(
+    input_file: str,
+    output_file: str | None = None,
+    password: bool = False,
+) -> None:
     """Encrypt a file using a key derived from a connected USB device."""
     try:
         in_path = Path(input_file)
+
+        if not _is_file_readable(in_path):
+            click.secho(
+                f"Error: Input file '{in_path.name}' is currently open or unreadable. "
+                "Close it and try again.",
+                fg="red",
+            )
+            raise click.exceptions.Exit(1)
 
         if output_file is None:
             out_path = in_path.with_name(f"{in_path.name}.vault")
@@ -107,7 +159,7 @@ def encrypt(input_file: str, output_file: str | None = None) -> None:
                 f"Do you want to save to '{out_path.name}'?"
             ):
                 click.secho("Operation cancelled.", fg="yellow")
-                sys.exit(0)
+                raise click.exceptions.Exit(0)
         else:
             out_path = Path(output_file)
 
@@ -120,27 +172,67 @@ def encrypt(input_file: str, output_file: str | None = None) -> None:
             )
 
         if out_path.exists():
+            if not _is_file_writable(out_path):
+                click.secho(
+                    f"Error: Output file '{out_path.name}' is currently open or unwritable. "
+                    "Close it and try again.",
+                    fg="red",
+                )
+                raise click.exceptions.Exit(1)
+
             if not click.confirm(
                 f"Output file '{out_path}' already exists. Do you want to overwrite it?"
             ):
                 click.secho("Operation cancelled.", fg="yellow")
-                sys.exit(0)
+                raise click.exceptions.Exit(0)
 
         fingerprint = _select_usb_device()
 
-        encrypt_file(
-            fingerprint=fingerprint,
-            input_file=in_path,
-            output_file=out_path,
-        )
+        pwd = None
+        if password:
+            pwd = click.prompt("Password", hide_input=True, confirmation_prompt=True)
+
+        with Progress(
+            TextColumn("[bold blue]{task.description}", justify="right"),
+            BarColumn(bar_width=None),
+            "[progress.percentage]{task.percentage:>3.1f}%",
+            "•",
+            DownloadColumn(),
+            "•",
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task(
+                f"Encrypting {in_path.name}", total=in_path.stat().st_size
+            )
+
+            def update_progress(processed: int, total: int) -> None:
+                progress.update(task, completed=processed, total=total)
+
+            encrypt_file(
+                fingerprint=fingerprint,
+                input_file=in_path,
+                output_file=out_path,
+                password=pwd,
+                progress_callback=update_progress,
+            )
 
         click.secho(
             f"Successfully encrypted '{in_path.name}' to '{out_path.name}'", fg="green"
         )
 
+    except click.exceptions.Exit:
+        raise
+    except click.exceptions.Abort:
+        raise
     except USBVaultError as e:
         click.secho(f"Encryption failed: {e}", fg="red")
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
+    except OSError as e:
+        click.secho(f"File system error: {e.strerror}", fg="red")
+        raise click.exceptions.Exit(1)
+    except Exception as e:
+        click.secho(f"An unexpected error occurred: {type(e).__name__}", fg="red")
+        raise click.exceptions.Exit(1)
 
 
 @cli.command()
@@ -153,10 +245,27 @@ def encrypt(input_file: str, output_file: str | None = None) -> None:
     type=click.Path(dir_okay=False, resolve_path=True),
     required=False,
 )
-def decrypt(input_file: str, output_file: str | None = None) -> None:
+@click.option(
+    "--password",
+    is_flag=True,
+    help="Prompt for an optional user password safely.",
+)
+def decrypt(
+    input_file: str,
+    output_file: str | None = None,
+    password: bool = False,
+) -> None:
     """Decrypt a .vault file using a key from the original USB device."""
     try:
         in_path = Path(input_file)
+
+        if not _is_file_readable(in_path):
+            click.secho(
+                f"Error: Input file '{in_path.name}' is currently open or unreadable. "
+                "Close it and try again.",
+                fg="red",
+            )
+            raise click.exceptions.Exit(1)
 
         if output_file is None:
             if in_path.suffix == ".vault":
@@ -166,14 +275,14 @@ def decrypt(input_file: str, output_file: str | None = None) -> None:
                     f"Do you want to save to '{out_path.name}'?"
                 ):
                     click.secho("Operation cancelled.", fg="yellow")
-                    sys.exit(0)
+                    raise click.exceptions.Exit(0)
             else:
                 click.secho(
                     "Error: Output file not specified and input file does not "
                     "have .vault extension. Cannot determine default output name.",
                     fg="red",
                 )
-                sys.exit(1)
+                raise click.exceptions.Exit(1)
         else:
             out_path = Path(output_file)
 
@@ -183,27 +292,67 @@ def decrypt(input_file: str, output_file: str | None = None) -> None:
             )
 
         if out_path.exists():
+            if not _is_file_writable(out_path):
+                click.secho(
+                    f"Error: Output file '{out_path.name}' is currently open or unwritable. "
+                    "Close it and try again.",
+                    fg="red",
+                )
+                raise click.exceptions.Exit(1)
+
             if not click.confirm(
                 f"Output file '{out_path}' already exists. Do you want to overwrite it?"
             ):
                 click.secho("Operation cancelled.", fg="yellow")
-                sys.exit(0)
+                raise click.exceptions.Exit(0)
 
         fingerprint = _select_usb_device()
 
-        decrypt_file(
-            fingerprint=fingerprint,
-            input_file=in_path,
-            output_file=out_path,
-        )
+        pwd = None
+        if password:
+            pwd = click.prompt("Password", hide_input=True)
+
+        with Progress(
+            TextColumn("[bold blue]{task.description}", justify="right"),
+            BarColumn(bar_width=None),
+            "[progress.percentage]{task.percentage:>3.1f}%",
+            "•",
+            DownloadColumn(),
+            "•",
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task(
+                f"Decrypting {in_path.name}", total=in_path.stat().st_size
+            )
+
+            def update_progress(processed: int, total: int) -> None:
+                progress.update(task, completed=processed, total=total)
+
+            decrypt_file(
+                fingerprint=fingerprint,
+                input_file=in_path,
+                output_file=out_path,
+                password=pwd,
+                progress_callback=update_progress,
+            )
 
         click.secho(
             f"Successfully decrypted '{in_path.name}' to '{out_path.name}'", fg="green"
         )
 
+    except click.exceptions.Exit:
+        raise
+    except click.exceptions.Abort:
+        raise
     except USBVaultError as e:
         click.secho(f"Decryption failed: {e}", fg="red")
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
+    except OSError as e:
+        click.secho(f"File system error: {e.strerror}", fg="red")
+        raise click.exceptions.Exit(1)
+    except Exception as e:
+        click.secho(f"An unexpected error occurred: {type(e).__name__}", fg="red")
+        raise click.exceptions.Exit(1)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ input changes (salt/password), and adherence to the specified security parameter
 
 import base64
 
-from usb_vault.key_derivation import derive_key
+from usb_vault.key_derivation import derive_key, generate_salt
 
 KNOWN_PASSWORD = "password"
 KNOWN_SALT = b"\x00" * 16
@@ -29,8 +29,18 @@ def test_derive_key_known_vector():
     This verifies the underlying cryptographic algorithm is correct.
     """
     derived_key = derive_key(KNOWN_PASSWORD, KNOWN_SALT)
-    print(base64.b64encode(derived_key))
     assert base64.b64encode(derived_key) == KNOWN_KEY
+
+
+def test_generate_salt():
+    """
+    Tests that generate_salt returns unpredictable 16-byte outputs.
+    """
+    salt1 = generate_salt()
+    salt2 = generate_salt()
+    assert len(salt1) == 16
+    assert len(salt2) == 16
+    assert salt1 != salt2
 
 
 def test_derive_key_salt_matters():

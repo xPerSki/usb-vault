@@ -4,9 +4,40 @@ Handles hardware enumeration and fingerprinting of USB storage devices
 on Windows systems using the WMI (Windows Management Instrumentation) interface.
 """
 
+import hashlib
+
 import wmi
 
 from usb_vault.exceptions import NoUSBDeviceError, USBVaultError
+
+
+def get_device_fingerprint(device: dict) -> str:
+    """Generates a stable, unique cryptographic fingerprint for a USB device.
+
+    Combines immutable hardware identifiers into SHA-256 hash. This ensures
+    that the derived key is strictly bound to the physical hardware's silicon,
+    rather than volatile attributes like mounting paths or drive letters.
+
+    This relies exclusively on:
+    - PNPDeviceID: Inherently incorporates Vendor ID, Product ID, Firmware Revision,
+      and the Serial Number in a standardized string format.
+    - Model: Provides a stable generic string fallback (e.g. product name).
+
+    Using these two fields avoids redundancy and potential issues with generic
+    devices that fail to expose a clean secondary SerialNumber field to the OS.
+
+    Args:
+        device (dict): A dictionary containing USB device attributes.
+
+    Returns:
+        str: A stable hex-encoded SHA-256 fingerprint.
+    """
+    components = [
+        str(device.get("PNPDeviceID", "")).strip(),
+        str(device.get("Model", "")).strip(),
+    ]
+    raw_fingerprint = "||".join(components)
+    return hashlib.sha256(raw_fingerprint.encode("utf-8")).hexdigest()
 
 
 def list_usb_storage_devices() -> list[dict]:

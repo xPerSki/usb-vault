@@ -27,7 +27,7 @@ def generate_salt(n: int = 16) -> bytes:
     return os.urandom(n)
 
 
-def derive_key(fingerprint: str, salt: bytes) -> bytes:
+def derive_key(fingerprint: str, salt: bytes) -> bytearray:
     """Derives a 256-bit cryptographic key from a USB fingerprint using Argon2id.
 
     Args:
@@ -35,7 +35,7 @@ def derive_key(fingerprint: str, salt: bytes) -> bytes:
         salt: Random bytes from generate_salt()
 
     Returns:
-        32 raw bytes suitable for use as an AES-256 key
+        32 raw bytes suitable for use as an AES-256 key, enclosed in a mutable bytearray.
 
     Note:
         Default parameters use recommended OWASP values
@@ -49,4 +49,4 @@ def derive_key(fingerprint: str, salt: bytes) -> bytes:
         hash_len=32,
         type=argon2.low_level.Type.ID,
     )
-    return secret
+    return bytearray(secret)
