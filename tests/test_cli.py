@@ -208,7 +208,7 @@ def test_cli_encrypt_handles_unexpected_error_without_leaking_details(
     _mock_encrypt,
     _mock_select_usb,
 ):
-    """Ensures unexpected exceptions are caught and only the exception type is shown."""
+    """Unexpected failures must not expose exception details or types."""
     runner = CliRunner()
     with runner.isolated_filesystem():
         with open("in.txt", "wb") as f:
@@ -217,7 +217,8 @@ def test_cli_encrypt_handles_unexpected_error_without_leaking_details(
         result = runner.invoke(cli, ["encrypt", "in.txt", "out.vault"])
 
     assert result.exit_code == 1
-    assert "An unexpected error occurred: RuntimeError" in result.output
+    assert "An unexpected error occurred." in result.output
+    assert "RuntimeError" not in result.output
     assert "secret internal detail" not in result.output
     assert "Traceback" not in result.output
 
@@ -280,3 +281,28 @@ def test_cli_decrypt_with_wrong_optional_password_fails_gracefully(mock_list_usb
         assert "Authentication failed" in decrypt_result.output
         assert "Traceback" not in decrypt_result.output
         assert not os.path.exists("secret.out")
+
+
+@patch("usb_vault.cli._select_usb_device", return_value="faked-fingerprint-hash")
+@patch("usb_vault.cli.encrypt_file")
+def test_cli_wipes_mutable_password_after_encrypt(mock_encrypt, _mock_select_usb):
+    """The CLI-owned password buffer must be zeroed after the command."""
+    captured = {}
+
+    def capture_password(**kwargs):
+        captured["password"] = kwargs["password"]
+
+    mock_encrypt.side_effect = capture_password
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with open("in.txt", "wb") as f:
+            f.write(b"sensitive")
+        result = runner.invoke(
+            cli,
+            ["encrypt", "in.txt", "out.vault", "--password"],
+            input="strong-passphrase\nstrong-passphrase\n1\n",
+        )
+
+    assert result.exit_code == 0, result.output
+    assert isinstance(captured["password"], bytearray)
+    assert captured["password"] == bytearray(len(captured["password"]))

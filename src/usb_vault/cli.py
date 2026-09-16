@@ -1,10 +1,9 @@
 """Command-line interface for USB Vault.
 
-This module provides the main entry point for the usb-vault application,
-offering commands to encrypt and decrypt files using a hardware-bound key
-derived from a connected USB device.
+Provides interactive encrypt and decrypt commands for Windows.
 """
 
+import logging
 from pathlib import Path
 
 import click
@@ -16,13 +15,22 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from .crypto import decrypt_file, encrypt_file
+from .crypto import decrypt_file, encrypt_file, wipe_secret
 from .exceptions import NoUSBDeviceError, USBVaultError
 from .usb_detector import get_device_fingerprint, list_usb_storage_devices
 
+logger = logging.getLogger(__name__)
+
 
 def _is_file_readable(filepath: Path) -> bool:
-    """Verify if the system permits read access to the target file."""
+    """Check for read access.
+
+    Args:
+        filepath: The path to the file to check.
+
+    Returns:
+        True if the file is readable, False otherwise.
+    """
     try:
         with filepath.open("rb"):
             return True
@@ -31,7 +39,14 @@ def _is_file_readable(filepath: Path) -> bool:
 
 
 def _is_file_writable(filepath: Path) -> bool:
-    """Verify if the system permits write/append access to the target file."""
+    """Check for write access.
+
+    Args:
+        filepath: The path to the file to check.
+
+    Returns:
+        True if the file is writable, False otherwise.
+    """
     if not filepath.exists():
         return True
     try:
@@ -42,16 +57,13 @@ def _is_file_writable(filepath: Path) -> bool:
 
 
 def _select_usb_device() -> str:
-    """Interactively prompts the user to select a USB device.
-
-    Displays a list of connected USB storage devices, using the FriendlyName,
-    and allows the user to pick one or refresh the list.
+    """Prompt until the user selects a usable USB device or quits.
 
     Returns:
-        str: The PNPDeviceID of the selected USB device, to be used as a fingerprint.
+        The selected device's SHA-256 fingerprint.
 
     Raises:
-        click.exceptions.Exit: If the user exits the selection without picking a device.
+        click.exceptions.Exit: If the user quits without selecting a device.
     """
     while True:
         try:
@@ -59,9 +71,14 @@ def _select_usb_device() -> str:
             click.echo("Available USB devices:")
             for i, device in enumerate(devices, 1):
                 friendly_name = device.get("FriendlyName", "Unknown USB Device")
-                serial_number = device.get("SerialNumber", "No Serial")
+                serial_number = str(device.get("SerialNumber") or "")
+                serial_hint = (
+                    f"{serial_number[:4]}…{serial_number[-4:]}"
+                    if len(serial_number) > 8
+                    else (serial_number or "unavailable")
+                )
 
-                click.echo(f" {i}: {friendly_name} (Serial: {serial_number})")
+                click.echo(f" {i}: {friendly_name} (Serial: {serial_hint})")
 
             click.echo(
                 "\nSelect a device (1-N), press Enter to refresh, "
@@ -84,8 +101,9 @@ def _select_usb_device() -> str:
                 choice_index = int(choice) - 1
                 if 0 <= choice_index < len(devices):
                     selected_device = devices[choice_index]
-                    fingerprint = get_device_fingerprint(selected_device)
-                    if not fingerprint:
+                    try:
+                        fingerprint = get_device_fingerprint(selected_device)
+                    except USBVaultError:
                         click.secho(
                             "Error: Selected device has no hardware identifiers.",
                             fg="red",
@@ -117,7 +135,7 @@ def _select_usb_device() -> str:
 
 @click.group()
 def cli() -> None:
-    """A hardware-bound file encryption tool for Windows."""
+    """Encrypt files with a USB fingerprint and optional passphrase."""
 
 
 @cli.command()
@@ -133,7 +151,7 @@ def cli() -> None:
 @click.option(
     "--password",
     is_flag=True,
-    help="Prompt for an optional user password safely.",
+    help="Prompt for an optional passphrase without echoing it.",
 )
 def encrypt(
     input_file: str,
@@ -141,6 +159,7 @@ def encrypt(
     password: bool = False,
 ) -> None:
     """Encrypt a file using a key derived from a connected USB device."""
+    pwd = bytearray()
     try:
         in_path = Path(input_file)
 
@@ -163,7 +182,7 @@ def encrypt(
         else:
             out_path = Path(output_file)
 
-        if out_path.suffix != ".vault":
+        if out_path.suffix.lower() != ".vault":
             out_path = out_path.with_suffix(".vault")
             click.secho(
                 f"Warning: Output file did not have .vault extension. "
@@ -188,9 +207,25 @@ def encrypt(
 
         fingerprint = _select_usb_device()
 
-        pwd = None
         if password:
-            pwd = click.prompt("Password", hide_input=True, confirmation_prompt=True)
+            raw_password = click.prompt(
+                "Passphrase", hide_input=True, confirmation_prompt=True
+            )
+            pwd.extend(raw_password.encode("utf-8"))
+            is_short = len(raw_password) < 8
+            del raw_password
+            if is_short:
+                click.secho(
+                    "Warning: Passphrase is shorter than 8 characters. "
+                    "Consider using a stronger passphrase.",
+                    fg="yellow",
+                )
+        else:
+            click.secho(
+                "Warning: USB identifiers are not secret and may be copied "
+                "from this computer. Use --password for strong protection.",
+                fg="yellow",
+            )
 
         with Progress(
             TextColumn("[bold blue]{task.description}", justify="right"),
@@ -212,7 +247,7 @@ def encrypt(
                 fingerprint=fingerprint,
                 input_file=in_path,
                 output_file=out_path,
-                password=pwd,
+                password=pwd or None,
                 progress_callback=update_progress,
             )
 
@@ -231,8 +266,11 @@ def encrypt(
         click.secho(f"File system error: {e.strerror}", fg="red")
         raise click.exceptions.Exit(1)
     except Exception as e:
-        click.secho(f"An unexpected error occurred: {type(e).__name__}", fg="red")
+        logger.error("Unexpected CLI encryption failure (%s).", type(e).__name__)
+        click.secho("An unexpected error occurred.", fg="red")
         raise click.exceptions.Exit(1)
+    finally:
+        wipe_secret(pwd)
 
 
 @cli.command()
@@ -248,7 +286,7 @@ def encrypt(
 @click.option(
     "--password",
     is_flag=True,
-    help="Prompt for an optional user password safely.",
+    help="Prompt for an optional passphrase without echoing it.",
 )
 def decrypt(
     input_file: str,
@@ -256,6 +294,7 @@ def decrypt(
     password: bool = False,
 ) -> None:
     """Decrypt a .vault file using a key from the original USB device."""
+    pwd = bytearray()
     try:
         in_path = Path(input_file)
 
@@ -268,7 +307,7 @@ def decrypt(
             raise click.exceptions.Exit(1)
 
         if output_file is None:
-            if in_path.suffix == ".vault":
+            if in_path.suffix.lower() == ".vault":
                 out_path = in_path.with_suffix("")
                 if not click.confirm(
                     f"Output file not specified. "
@@ -286,7 +325,7 @@ def decrypt(
         else:
             out_path = Path(output_file)
 
-        if in_path.suffix != ".vault":
+        if in_path.suffix.lower() != ".vault":
             click.secho(
                 "Warning: Input file does not have a .vault extension.", fg="yellow"
             )
@@ -308,9 +347,10 @@ def decrypt(
 
         fingerprint = _select_usb_device()
 
-        pwd = None
         if password:
-            pwd = click.prompt("Password", hide_input=True)
+            raw_password = click.prompt("Passphrase", hide_input=True)
+            pwd.extend(raw_password.encode("utf-8"))
+            del raw_password
 
         with Progress(
             TextColumn("[bold blue]{task.description}", justify="right"),
@@ -332,7 +372,7 @@ def decrypt(
                 fingerprint=fingerprint,
                 input_file=in_path,
                 output_file=out_path,
-                password=pwd,
+                password=pwd or None,
                 progress_callback=update_progress,
             )
 
@@ -351,8 +391,11 @@ def decrypt(
         click.secho(f"File system error: {e.strerror}", fg="red")
         raise click.exceptions.Exit(1)
     except Exception as e:
-        click.secho(f"An unexpected error occurred: {type(e).__name__}", fg="red")
+        logger.error("Unexpected CLI decryption failure (%s).", type(e).__name__)
+        click.secho("An unexpected error occurred.", fg="red")
         raise click.exceptions.Exit(1)
+    finally:
+        wipe_secret(pwd)
 
 
 if __name__ == "__main__":

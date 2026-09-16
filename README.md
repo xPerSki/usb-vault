@@ -19,7 +19,9 @@
   <img src="https://img.shields.io/badge/Fingerprint-SHA--256-yellow.svg" alt="SHA-256">
 </p>
 
-**Protect your files with a hardware-bound key and an optional password factor. `usb-vault` encrypts sensitive documents, photos, and data so access requires your selected USB device, with optional extra user secret.**
+**Protect files with authenticated encryption derived from a selected USB
+device fingerprint and, for stronger protection, an optional passphrase.
+USB Vault processes files locally and never uploads their contents.**
 
 ---
 
@@ -27,28 +29,106 @@
 
 ### What is `usb-vault`?
 
-Think of it like a physical safe for your digital files. `usb-vault` requires a unique "key" to open your files:
+USB Vault derives an encryption key from:
 
-1.  **A Physical Key**: Your specific USB flash drive.
+1. **A USB-bound identifier:** a fingerprint calculated from identifiers
+   reported by the selected USB storage device.
+2. **An optional passphrase:** a secret known only to you and strongly
+   recommended for sensitive files.
 
-Without the selected USB drive, your files remain encrypted and computationally infeasible without the physical device. For stronger protection, use the optional password factor.
+The USB fingerprint is an identifier, not a hardware-protected secret.
+USB identifiers can potentially be read, copied, or emulated by a capable
+attacker. A strong passphrase ensures that possession or reproduction of the
+USB identifier alone is insufficient to decrypt the file.
 
 ### Why Should I Use It?
 
-*   **Offline-First Security**: Your files are encrypted locally on your computer. No cloud uploads, no accounts, and no telemetry are required by the core tool.
-*   **Hardware-Bound Protection**: If someone steals your laptop, they still can't access your vaulted files without your specific USB drive. This adds a powerful layer of physical security.
-*   **Simple & Transparent**: The program is designed to be straightforward. Because the code is open-source, its security properties can be independently reviewed.
+* **Offline-First Security**: Encryption and decryption happen locally. The
+  application does not upload files, require an account, or send telemetry.
+* **USB-Bound Access**: Vault files require the fingerprint of the USB device
+  selected during encryption. Adding a passphrase protects against copied or
+  spoofed USB identifiers.
+* **Authenticated Encryption**: AES-256-GCM detects incorrect keys and
+  modification of encrypted data.
+* **Simple & Transparent**: The source code is public and can be independently
+  reviewed.
+
+### Important Recovery Notice
+
+USB Vault has no recovery service, backdoor, account reset, or master key. If
+the required USB fingerprint cannot be reproduced, or you forget the
+passphrase, the encrypted data cannot be recovered.
+
+Keep appropriate backups of important original files and protect your
+passphrase independently of the USB device. Before deleting an original,
+verify that the vault decrypts successfully with the intended USB device and
+passphrase.
 
 ### How to Use It
 
-You can use the application either by downloading the `usb-vault.exe` standalone executable from the project's releases page, or by installing the Python package directly.
+You can use the application either by downloading the portable `USB-Vault.exe`
+from the [official releases page](https://github.com/xperski/usb-vault/releases),
+or by installing the Python package from source.
 
-**To install the package via Python (CLI access):**
+**Portable desktop application:**
+
+1. Download `USB-Vault.exe` from the official releases page.
+2. Optionally verify its SHA-256 fingerprint.
+3. Run the executable. USB Vault itself requires no installation. It uses the
+   Microsoft Edge WebView2 Runtime, which is included with current Windows
+   installations.
+
+
+In the desktop application:
+
+1. Open the **Encrypt** or **Decrypt** tab.
+2. Drop a file into the window or select it using the file picker.
+3. Select the required USB storage device.
+4. Enter the optional passphrase. The same passphrase must be supplied during
+   decryption.
+5. Start the operation and wait for it to finish. Do not disconnect the USB
+   device or close the application during an active operation.
+
+Encryption creates a new file ending in `.vault`; it does not delete the
+original. Decryption restores the original filename when possible and does not
+delete the vault.
+
+**To install the package from source (CLI and desktop access):**
+
 ```sh
 # From a local clone of the repository
 pip install .
 ```
 This installs the dependencies and makes the `usb-vault` command globally available in your terminal.
+
+To launch the desktop interface from a source installation:
+
+```sh
+usb-vault-webui
+```
+
+### Verify a Windows Download
+
+Each release publishes the SHA-256 fingerprint of its final executable. A
+matching fingerprint confirms that your downloaded file is byte-for-byte
+identical to the published build.
+
+1. Download `USB-Vault.exe`.
+2. Open PowerShell in the folder containing the file.
+3. Run:
+
+    ```powershell
+    Get-FileHash .\USB-Vault.exe -Algorithm SHA256
+    ```
+
+4. Compare the complete value in the `Hash` column with the SHA-256 value on
+   the corresponding
+   [GitHub release](https://github.com/xperski/usb-vault/releases) or the
+   official [USB Vault website](https://usbvault.app/changelogs).
+
+Compare all 64 hexadecimal characters; letter casing does not matter
+(`A-F` and `a-f` represent the same value). Do not run the file if any
+character differs. Delete it and download it again from an official source.
 
 #### To Encrypt a File:
 
@@ -58,13 +138,15 @@ This installs the dependencies and makes the `usb-vault` command globally availa
     ```sh
     usb-vault encrypt "C:\Users\YourName\Documents\my_secret_plan.txt"
     ```
-    Optional second factor:
+    Optional passphrase:
     ```sh
     usb-vault encrypt "C:\Users\YourName\Documents\my_secret_plan.txt" --password
     ```
-    (The program will securely prompt you for the password.)
+    (The program will prompt without echoing the passphrase.)
 4.  The program will ask you to select your USB drive from a list.
-5.  A new, encrypted file will be created: `my_secret_plan.txt.vault`. You can now safely delete the original.
+5.  A new encrypted file will be created:
+    `my_secret_plan.txt.vault`. Confirm that it can be decrypted and that you
+    have an appropriate backup before deleting the original.
 
 #### To Decrypt a File:
 
@@ -74,11 +156,11 @@ This installs the dependencies and makes the `usb-vault` command globally availa
     ```sh
     usb-vault decrypt "C:\Users\YourName\Documents\my_secret_plan.txt.vault"
     ```
-    If you used an optional password during encryption:
+    If you used an optional passphrase during encryption:
     ```sh
     usb-vault decrypt "C:\Users\YourName\Documents\my_secret_plan.txt.vault" --password
     ```
-    (The program will securely prompt you for the password.)
+    (The program will prompt without echoing the passphrase.)
 4.  The program will ask you to select the USB drive from a list.
 5.  Your original file, `my_secret_plan.txt`, will be restored.
 
@@ -90,54 +172,69 @@ This installs the dependencies and makes the `usb-vault` command globally availa
 
 ### Security Principles
 
-*   **Key Derivation**: We use `Argon2id`, the winner of the Password Hashing Competition, to derive the encryption key directly from the unique hardware fingerprint of your chosen USB device.
-*   **Encryption**: All files are encrypted using `AES-256` in `GCM` mode, which provides both confidentiality and integrity (protection against tampering).
-*   **Hardware Fingerprint + Optional Password**: The `PNPDeviceID` of the USB Mass Storage device is used as a hardware factor. You can additionally provide a password for stronger resistance against spoofing and offline guessing.
-*   **Chunked Processing**: Encryption and decryption process files in chunks to improve stability on larger files.
+* **Key Derivation**: Argon2id derives a 256-bit key from the USB fingerprint
+  and optional passphrase using a unique random salt stored in each vault.
+* **Encryption**: Files use AES-256-GCM authenticated encryption. Each chunk
+  has a unique nonce and authentication tag; authenticated metadata detects
+  altered headers, truncation, and appended data.
+* **USB Fingerprint + Optional Passphrase**: The fingerprint is calculated
+  from the USB mass-storage device's `PNPDeviceID` and model. It is an
+  identifier rather than a secret, so a strong passphrase is recommended.
+* **Chunked Processing**: Files are processed with bounded memory and written
+  through a temporary file before the completed output is published.
+* **Operation Locking**: Destination locks prevent concurrent operations from
+  writing to the same output path.
 
 ### Architecture
 
 The application is structured into clearly separated modules to ensure maintainability and security:
 
 *   **`cli.py`**: The command-line interface entry point, handling user inputs, prompts, and progress bars.
-*   **`gui.py`**: The graphical user interface, built with `customtkinter`, providing an intuitive visual experience.
 *   **`crypto.py`**: The core cryptography engine. Handles AES-256-GCM chunked streaming, file I/O, and header verification.
-*   **`key_derivation.py`**: Manages the Argon2id key derivation, securely combining the hardware fingerprint, optional password, and random salt.
+*   **`key_derivation.py`**: Manages Argon2id key derivation, combining the hardware fingerprint, optional passphrase, and random salt.
 *   **`usb_detector.py`**: Interfaces with Windows WMI to detect connected USB mass storage devices and extract stable hardware identifiers.
+*   **`vault_lock.py`**: Prevents conflicting operations and manages cleanup of interrupted temporary files.
 
 ### Known Limitations
 
-*   **Windows-Only**: Currently relies on Windows Management Instrumentation (WMI) infrastructure for USB detection.
-*   **Hardware Spoofing**: USB serial numbers and hardware strings can theoretically be read and cloned at the hardware firmware level by a sophisticated attacker. Using the optional password neutralizes this threat.
-*   **In-Memory Keys**: The derived symmetric encryption key exists temporarily in RAM during active file processing.
+* **Windows-Only**: USB detection currently relies on Windows Management
+  Instrumentation (WMI).
+* **USB Identifiers Are Not Secrets**: Hardware identifiers may be copied or
+  emulated. USB-only mode should not be treated as equivalent to a secret
+  cryptographic hardware token.
+* **No Recovery Mechanism**: Losing access to the required fingerprint or
+  passphrase makes decryption impossible.
+* **In-Memory Secrets**: Key material and passphrases exist temporarily in
+  process memory. Buffers are cleared on a best-effort basis, but Python and
+  native dependencies may create copies that cannot be guaranteed erased.
 
 ### Security Notes
 
-`usb-vault` is built with care and practical security defaults, but no software can guarantee perfect safety in every environment. Use updated systems, protect physical devices, and prefer USB + password mode for sensitive data.
+USB Vault is built with practical security defaults, but no software can
+guarantee safety in every environment. Use an updated, trusted computer;
+protect the USB device; use a unique, strong passphrase for sensitive data;
+maintain tested backups; and obtain builds only from official sources.
 
 ### Project Setup
 
-1.  **Prerequisites**: Python 3.11+
+1.  **Prerequisites**: Windows 10/11, Python 3.11+, and the Microsoft Edge
+    WebView2 Runtime (included with current Windows installations).
 
 2.  **Clone the repository**:
     ```sh
-    git clone https://github.com/your-username/usb-vault.git
+    git clone https://github.com/xperski/usb-vault.git
     cd usb-vault
     ```
 
 3.  **Create and activate a virtual environment**:
     ```sh
     python -m venv .venv
-    # On Windows
     .venv\Scripts\activate
-    # On macOS/Linux
-    source .venv/bin/activate
     ```
 
-4.  **Install dependencies**:
+4.  **Install the application and development dependencies**:
     ```sh
-    pip install -r requirements.txt
-    pip install -e .
+    pip install -e ".[dev]"
     ```
 
 5.  **Install pre-commit hooks** (for code linting and formatting):
