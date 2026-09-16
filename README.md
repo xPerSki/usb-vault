@@ -130,7 +130,7 @@ Compare all 64 hexadecimal characters; letter casing does not matter
 (`A-F` and `a-f` represent the same value). Do not run the file if any
 character differs. Delete it and download it again from an official source.
 
-### Encrypt a File (CLI):
+### Encrypt a File (CLI)
 
 1.  Open your terminal or command prompt.
 2.  Plug in your chosen USB drive.
@@ -148,7 +148,7 @@ character differs. Delete it and download it again from an official source.
     `my_secret_plan.txt.vault`. Confirm that it can be decrypted and that you
     have an appropriate backup before deleting the original.
 
-### Decrypt a File (CLI):
+### Decrypt a File (CLI)
 
 1.  Open your terminal or command prompt.
 2.  Plug in the **same** USB drive you used to encrypt.
