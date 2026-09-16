@@ -130,7 +130,7 @@ Compare all 64 hexadecimal characters; letter casing does not matter
 (`A-F` and `a-f` represent the same value). Do not run the file if any
 character differs. Delete it and download it again from an official source.
 
-#### To Encrypt a File:
+### Encrypt a File (CLI):
 
 1.  Open your terminal or command prompt.
 2.  Plug in your chosen USB drive.
@@ -148,7 +148,7 @@ character differs. Delete it and download it again from an official source.
     `my_secret_plan.txt.vault`. Confirm that it can be decrypted and that you
     have an appropriate backup before deleting the original.
 
-#### To Decrypt a File:
+### Decrypt a File (CLI):
 
 1.  Open your terminal or command prompt.
 2.  Plug in the **same** USB drive you used to encrypt.
@@ -208,13 +208,6 @@ The application is structured into clearly separated modules to ensure maintaina
   process memory. Buffers are cleared on a best-effort basis, but Python and
   native dependencies may create copies that cannot be guaranteed erased.
 
-### Security Notes
-
-USB Vault is built with practical security defaults, but no software can
-guarantee safety in every environment. Use an updated, trusted computer;
-protect the USB device; use a unique, strong passphrase for sensitive data;
-maintain tested backups; and obtain builds only from official sources.
-
 ### Project Setup
 
 1.  **Prerequisites**: Windows 10/11, Python 3.11+, and the Microsoft Edge
@@ -249,3 +242,10 @@ To ensure everything is working correctly, run the full test suite:
 ```sh
 pytest
 ```
+
+## Security Notes
+
+USB Vault is built with practical security defaults, but no software can
+guarantee safety in every environment. Use an updated, trusted computer;
+protect the USB device; use a unique, strong passphrase for sensitive data;
+maintain tested backups; and obtain builds only from official sources.
