@@ -25,7 +25,7 @@ USB Vault processes files locally and never uploads their contents.**
 
 ---
 
-## For Everyone: Your Personal Digital Safe
+## Your Personal Digital Safe
 
 ### What is `usb-vault`?
 
@@ -82,7 +82,7 @@ In the application:
 4. Enter the optional passphrase. The same passphrase must be used during decryption.
 5. Start the operation and wait for it to finish. Do not disconnect the USB device or close the application during active processing.
 
-Encryption creates a new file ending in `.vault`; it does not delete the original file. Decryption restores the original filename and does not delete the vault.
+Encryption creates a new file ending in `.vault`. Decryption restores the original file.
 
 ### Verify a Windows Download
 
