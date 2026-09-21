@@ -48,6 +48,36 @@ else:  # pragma: no cover
             fcntl.flock(fd, fcntl.LOCK_UN)
 
 
+def _is_link(path: Path) -> bool:
+    """Return whether path is a symbolic link, directory junction, or reparse point."""
+    try:
+        if path.is_symlink():
+            return True
+        if hasattr(path, "is_junction") and path.is_junction():
+            return True
+        if sys.platform == "win32":
+            st = os.lstat(path)
+            if getattr(st, "st_reparse_tag", 0) != 0:
+                return True
+            if getattr(st, "st_file_attributes", 0) & 0x400:
+                return True
+        return False
+    except OSError:
+        return False
+
+
+def _is_network_or_device_path(path: Path) -> bool:
+    """Return whether path is a UNC, network, or raw device path."""
+    raw = str(path)
+    if raw.startswith(("\\\\", "//")):
+        return True
+    if sys.platform == "win32":
+        drive = path.drive
+        if not drive or len(drive) != 2 or drive[1] != ":" or not drive[0].isalpha():
+            return True
+    return False
+
+
 class VaultLock:
     """OS-level exclusive lock guarding a single vault output path.
 
@@ -75,13 +105,25 @@ class VaultLock:
         """Create/open the lock file and take a non-blocking exclusive lock.
 
         Raises:
-            VaultLockError: If another live process already holds the lock.
+            VaultLockError: If another live process already holds the lock or
+                the lock path is a symbolic link, junction, or hard link.
             OSError: If the lock file itself cannot be created or opened
                 (e.g. missing directory, permission denied, disk full).
         """
-        fd = os.open(str(self.path), os.O_CREAT | os.O_RDWR, 0o600)
+        if _is_link(self.path):
+            raise VaultLockError(f"Lock path '{self.path}' cannot be a symbolic link.")
+        if _is_network_or_device_path(self.path):
+            raise VaultLockError(f"Lock path '{self.path}' cannot be a network or UNC path.")
+
+        flags = os.O_CREAT | os.O_RDWR
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(str(self.path), flags, 0o600)
         try:
-            if os.fstat(fd).st_size == 0:
+            stat_res = os.fstat(fd)
+            if stat_res.st_nlink > 1:
+                raise VaultLockError(f"Lock path '{self.path}' cannot be a hard link.")
+            if stat_res.st_size == 0:
                 os.write(fd, b"\0")
             if not _try_lock(fd):
                 raise VaultLockError(
@@ -110,7 +152,8 @@ class VaultLock:
         _unlock(fd)
         os.close(fd)
         with contextlib.suppress(OSError):
-            self.path.unlink()
+            if not _is_link(self.path):
+                self.path.unlink()
 
 
 def cleanup_orphaned_temps(output_file: Path) -> None:

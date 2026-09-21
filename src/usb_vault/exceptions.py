@@ -14,6 +14,7 @@ __all__ = [
     "AuthenticationError",
     "IntegrityError",
     "VaultLockError",
+    "OperationCancelled",
 ]
 
 
@@ -49,7 +50,7 @@ class AuthenticationError(DecryptionError):
     """Raised when authenticated decryption fails.
 
     Indicates the wrong USB device, the wrong password, or that the ciphertext
-    has been tampered with. Maps to :class:`cryptography.exceptions.InvalidTag`.
+    has been tampered with. Maps to `cryptography.exceptions.InvalidTag`.
     """
 
 
@@ -63,3 +64,11 @@ class IntegrityError(DecryptionError):
 
 class VaultLockError(USBVaultError):
     """Raised when another operation already owns the output lock."""
+
+
+class OperationCancelled(USBVaultError):
+    """Raised when the user aborts an in-progress encrypt/decrypt.
+
+    Staging temps are removed and the output lock is released before this
+    propagates; the destination file is left untouched.
+    """

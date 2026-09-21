@@ -1,7 +1,9 @@
 """Tests for per-output locking and stale-temp cleanup."""
 
 import os
+import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from usb_vault.exceptions import VaultLockError
@@ -150,3 +152,65 @@ def test_cleanup_on_missing_directory_does_not_raise(tmp_path: Path):
     """Cleanup must degrade gracefully if the output directory is gone."""
     output = tmp_path / "missing-dir" / "secret.vault"
     cleanup_orphaned_temps(output)  # must not raise
+
+
+def test_vault_lock_rejects_hard_link_lock_file(tmp_path: Path):
+    """Acquiring a lock whose lock file is a hard link must fail closed."""
+    output = tmp_path / "secret.vault"
+    lock_path = tmp_path / f"secret.vault{LOCK_SUFFIX}"
+    lock_path.write_bytes(b"\0")
+
+    other_link = tmp_path / "alias.lock"
+    try:
+        os.link(lock_path, other_link)
+    except OSError:
+        pytest.skip("Filesystem does not support hard links")
+
+    lock = VaultLock(output)
+    with pytest.raises(VaultLockError, match="cannot be a hard link"):
+        lock.acquire()
+
+
+def test_vault_lock_rejects_symlink_lock_file(tmp_path: Path):
+    """Acquiring or releasing a lock file that is a symlink must fail closed."""
+    output = tmp_path / "secret.vault"
+    lock = VaultLock(output)
+
+    with patch.object(Path, "is_symlink", return_value=True):
+        with pytest.raises(VaultLockError, match="cannot be a symbolic link"):
+            lock.acquire()
+
+    # In release(), ensure it never unlinks a symlink
+    lock_path = tmp_path / f"secret.vault{LOCK_SUFFIX}"
+    lock_path.write_bytes(b"\0")
+    lock._fd = os.open(str(lock_path), os.O_RDWR)
+    with patch.object(Path, "is_symlink", return_value=True), patch.object(Path, "unlink") as mock_unlink:
+        lock.release()
+        mock_unlink.assert_not_called()
+
+
+def test_vault_lock_rejects_real_junction_lock_file(tmp_path: Path):
+    """Acquiring or releasing a lock file that is a real Windows junction must fail closed."""
+    if sys.platform != "win32":
+        pytest.skip("Windows junctions only supported on win32")
+
+    import _winapi
+
+    output = tmp_path / "secret.vault"
+    target_dir = tmp_path / "target_dir"
+    target_dir.mkdir()
+    lock_path = tmp_path / f"secret.vault{LOCK_SUFFIX}"
+
+    _winapi.CreateJunction(str(target_dir), str(lock_path))
+
+    lock = VaultLock(output)
+    with pytest.raises(VaultLockError, match="cannot be a symbolic link"):
+        lock.acquire()
+
+    # In release(), ensure it never unlinks a junction
+    lock._fd = 999
+    with patch("usb_vault.vault_lock._unlock"), patch("os.close"):
+        lock.release()
+    assert lock_path.exists()
+
+

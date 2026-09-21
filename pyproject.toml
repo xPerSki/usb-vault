@@ -11,13 +11,10 @@ requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
 
 dependencies = [
-    "cryptography>=42.0",
+    "cryptography>=46.0.7",
     "argon2-cffi>=23.1",
-    "click>=8.1",
-    "rich>=13.0",
     "pywin32>=306",
     "wmi>=1.5.1",
-    "pywebview>=5.0",
 ]
 
 [project.optional-dependencies]
@@ -28,12 +25,6 @@ dev = [
     "pre-commit>=3.5",
 ]
 
-[project.scripts]
-usb-vault = "usb_vault.cli:cli"
-
-[project.gui-scripts]
-usb-vault-webui = "usb_vault.webui.app:main"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -41,8 +32,7 @@ where = ["src"]
 version = { attr = "usb_vault.__version__" }
 
 [tool.setuptools.package-data]
-"usb_vault" = ["icons/icon.ico"]
-"usb_vault.webui" = ["static/*", "static/fonts/*"]
+"usb_vault" = ["icons/icon.ico", "icons/icon.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -59,7 +49,6 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "ANN", "S101", "S105", "S106", "E501"]
-"scripts/*" = ["D", "ANN", "S101", "T201"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -7,14 +7,8 @@ dist/
 *.build/
 *.dist/
 build/
-scripts/
-webui/
-*_webui_main.py
-tests/test_webui*.py
-tests/test_version*.py
-pro/
-eggs/
 .eggs/
+eggs/
 
 __pycache__/
 *_cache/
@@ -28,9 +22,4 @@ __pycache__/
 .cursor/
 *.swp
 *.xml
-TODO
 *.vault
-*.code-workspace
-*.pfx
-*.p12
-*.bat
