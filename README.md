@@ -23,6 +23,11 @@
 device fingerprint and, for stronger protection, an optional passphrase.
 USB Vault processes files locally and never uploads their contents.**
 
+> [!Caution]
+> USB-Vault is undergoing a full migration to Rust to improve memory safety and performance. For more info visit **[USB-Vault Website](https://usbvault.app)** and wait for official information regarding migration, new features and expected release date. Please, be patient and if you have any questions, don't hesitate to contact **persky@usbvault.app**
+
+***Website update + migration progress info is expected to be published around 17-19 Oct***
+
 ---
 
 ## Your Personal Digital Safe
